@@ -6,6 +6,8 @@
 
 The official TypeScript/JavaScript client for gov-login
 
+This SDK is a fork of the [sgID SDK](https://github.com/opengovsg/sgid-client).
+
 ## CHANGELOG
 
 See [Releases](https://github.com/opengovsg/gov-login-client/releases) for CHANGELOG and breaking changes.
