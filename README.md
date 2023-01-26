@@ -1,19 +1,19 @@
 ![](sgid-logo.png)
 
-# sgid-client
+# gov-login-client
 
-[![npm version](https://badge.fury.io/js/@opengovsg%2Fsgid-client.svg)](https://badge.fury.io/js/@opengovsg%2Fsgid-client)
+[![npm version](https://badge.fury.io/js/@opengovsg%2Fsgid-client.svg)](https://badge.fury.io/js/@opengovsg%2Fgov-login-client)
 
-The official TypeScript/JavaScript client for sgID
+The official TypeScript/JavaScript client for gov-login
 
 ## CHANGELOG
 
-See [Releases](https://github.com/opengovsg/sgid-client/releases) for CHANGELOG and breaking changes.
+See [Releases](https://github.com/opengovsg/gov-login-client/releases) for CHANGELOG and breaking changes.
 
 ## Installation
 
 ```bash
-npm i @opengovsg/sgid-client
+npm i @opengovsg/gov-login-client
 ```
 
 ## Usage
@@ -21,12 +21,11 @@ npm i @opengovsg/sgid-client
 ### Initialization
 
 ```typescript
-import SgidClient from '@opengovsg/sgid-client'
+import GovLoginClient from '@opengovsg/gov-login-client'
 
-const client = new SgidClient({
+const client = new GovLoginClient({
   clientId: 'CLIENT-ID',
   clientSecret: 'cLiEnTsEcReT',
-  privateKey: '-----BEGIN PRIVATE KEY-----MII ... XXX-----END PRIVATE KEY-----',
   redirectUri: 'http://localhost:3000/callback',
 })
 ```
@@ -61,8 +60,7 @@ const { sub, accessToken } = await client.callback(
 `async client.userinfo(accessToken)`
 
 ```typescript
-const { sub, data } = await client.userinfo('access_token')
-// data: { myinfo.nric_number: "S1231231A", myinfo.name: "JAMUS TAN" }
+const { sub } = await client.userinfo('access_token')
 ```
 
 ## Supported Runtime and Environment

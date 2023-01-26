@@ -1,4 +1,3 @@
-import { compactDecrypt, importJWK, importPKCS8 } from 'jose'
 import {
   Client,
   ClientAuthMethod,
@@ -7,22 +6,18 @@ import {
   ResponseType,
 } from 'openid-client'
 
-import { convertPkcs1ToPkcs8 } from './util'
+const GOV_LOGIN_SIGNING_ALG = 'RS256'
+const GOV_LOGIN_SUPPORTED_FLOWS: ResponseType[] = ['code']
+const GOV_LOGIN_AUTH_METHOD: ClientAuthMethod = 'client_secret_post'
 
-const SGID_SIGNING_ALG = 'RS256'
-const SGID_SUPPORTED_FLOWS: ResponseType[] = ['code']
-const SGID_AUTH_METHOD: ClientAuthMethod = 'client_secret_post'
-
-export class SgidClient {
-  private privateKey: string
-
-  private sgID: Client
+export class GovLoginClient {
+  private client: Client
 
   constructor({
     clientId,
     clientSecret,
-    privateKey,
     redirectUri,
+    // TODO: update the default hostname to the GovLogin domain
     hostname = 'https://api.id.gov.sg',
     apiVersion = 1,
   }: {
@@ -33,7 +28,7 @@ export class SgidClient {
     hostname?: string
     apiVersion?: number
   }) {
-    // TODO: Discover sgID issuer metadata via .well-known endpoint
+    // TODO: Discover GovLogin issuer metadata via .well-known endpoint
     const { Client } = new Issuer({
       issuer: new URL(hostname).origin,
       authorization_endpoint: `${hostname}/v${apiVersion}/oauth/authorize`,
@@ -42,27 +37,18 @@ export class SgidClient {
       jwks_uri: `${new URL(hostname).origin}/.well-known/jwks.json`,
     })
 
-    this.sgID = new Client({
+    this.client = new Client({
       client_id: clientId,
       client_secret: clientSecret,
       redirect_uris: redirectUri ? [redirectUri] : undefined,
-      id_token_signed_response_alg: SGID_SIGNING_ALG,
-      response_types: SGID_SUPPORTED_FLOWS,
-      token_endpoint_auth_method: SGID_AUTH_METHOD,
+      id_token_signed_response_alg: GOV_LOGIN_SIGNING_ALG,
+      response_types: GOV_LOGIN_SUPPORTED_FLOWS,
+      token_endpoint_auth_method: GOV_LOGIN_AUTH_METHOD,
     })
-
-    /**
-     * For backward compatibility with pkcs1
-     */
-    if (privateKey.startsWith('-----BEGIN RSA PRIVATE KEY-----')) {
-      this.privateKey = convertPkcs1ToPkcs8(privateKey)
-    } else {
-      this.privateKey = privateKey
-    }
   }
 
   /**
-   * Generates authorization url for sgID OIDC flow
+   * Generates authorization url for gov-login OIDC flow
    * @param state A random string to prevent CSRF
    * @param scopes Array or space-separated scopes, must include openid
    * @param nonce Specify null if no nonce
@@ -75,7 +61,7 @@ export class SgidClient {
     nonce: string | null = generators.nonce(),
     redirectUri: string = this.getFirstRedirectUri(),
   ): { url: string; nonce?: string } {
-    const url = this.sgID.authorizationUrl({
+    const url = this.client.authorizationUrl({
       scope: typeof scope === 'string' ? scope : scope.join(' '),
       nonce: nonce ?? undefined,
       state,
@@ -90,17 +76,17 @@ export class SgidClient {
 
   private getFirstRedirectUri(): string {
     if (
-      !this.sgID.metadata.redirect_uris ||
-      this.sgID.metadata.redirect_uris.length === 0
+      !this.client.metadata.redirect_uris ||
+      this.client.metadata.redirect_uris.length === 0
     ) {
       // eslint-disable-next-line typesafe/no-throw-sync-func
       throw new Error('No redirect URI registered with this client')
     }
-    return this.sgID.metadata.redirect_uris[0]
+    return this.client.metadata.redirect_uris[0]
   }
 
   /**
-   * Callback handler for sgID OIDC flow
+   * Callback handler for gov-login OIDC flow
    * @param code The authorization code received from the authorization server
    * @param nonce Specify null if no nonce
    * @param redirectUri The redirect URI used in the authorization request, defaults to the one registered with the client
@@ -111,7 +97,7 @@ export class SgidClient {
     nonce: string | null = null,
     redirectUri = this.getFirstRedirectUri(),
   ): Promise<{ sub: string; accessToken: string }> {
-    const tokenSet = await this.sgID.callback(
+    const tokenSet = await this.client.callback(
       redirectUri,
       { code },
       { nonce: nonce ?? undefined },
@@ -125,75 +111,20 @@ export class SgidClient {
   }
 
   /**
-   * Retrieve verified user info and decrypt with client's private key
+   * Retrieve verified user info
    * @param accessToken The access token returned in the callback function
-   * @returns The sub of the user and data
+   * @returns The sub of the user - note that gov-login will only return the sub for now
    */
-  async userinfo(
-    accessToken: string,
-  ): Promise<{ sub: string; data: Record<string, string> }> {
+  async userinfo(accessToken: string): Promise<{ sub: string }> {
     /**
      * sub: user sub (also returned previously in id_token)
-     * encryptedPayloadKey: key encrypted with client's public key (for decrypting userinfo jwe)
-     * data: jwe of userinfo
      */
-    const {
-      sub,
-      key: encryptedPayloadKey,
-      data,
-    } = await this.sgID.userinfo<{
+    const { sub } = await this.client.userinfo<{
       sub: string | undefined
-      key: string | undefined
       data: Record<string, string> | undefined
     }>(accessToken)
-
-    if (encryptedPayloadKey && data) {
-      const result = await this.decryptPayload(encryptedPayloadKey, data)
-      return { sub, data: result }
-    }
-
-    return { sub, data: {} }
-  }
-
-  private async decryptPayload(
-    encryptedPayloadKey: string,
-    data: Record<string, string>,
-  ): Promise<Record<string, string>> {
-    let privateKeyJwk
-    let payloadJwk
-    try {
-      // Import client private key in PKCS8 format
-      privateKeyJwk = await importPKCS8(this.privateKey, 'RSA-OAEP-256')
-    } catch (e) {
-      throw new Error('Failed to import private key')
-    }
-
-    // Decrypt key to get plaintext symmetric key
-    const decoder = new TextDecoder()
-    try {
-      const decryptedKey = decoder.decode(
-        (await compactDecrypt(encryptedPayloadKey, privateKeyJwk)).plaintext,
-      )
-      payloadJwk = await importJWK(JSON.parse(decryptedKey))
-    } catch (e) {
-      throw new Error('Unable to decrypt or import payload key')
-    }
-
-    // Decrypt each jwe in body
-    const result: Record<string, string> = {}
-    try {
-      for (const field in data) {
-        const jwe = data[field]
-        const decryptedValue = decoder.decode(
-          (await compactDecrypt(jwe, payloadJwk)).plaintext,
-        )
-        result[field] = decryptedValue
-      }
-    } catch (e) {
-      throw new Error('Unable to decrypt payload')
-    }
-    return result
+    return { sub }
   }
 }
 
-export default SgidClient
+export default GovLoginClient
