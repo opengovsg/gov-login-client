@@ -31,9 +31,9 @@ export class GovLoginClient {
     // TODO: Discover GovLogin issuer metadata via .well-known endpoint
     const { Client } = new Issuer({
       issuer: new URL(hostname).origin,
-      authorization_endpoint: `${hostname}/v${apiVersion}/oidc/auth`,
-      token_endpoint: `${hostname}/v${apiVersion}/oidc/token`,
-      userinfo_endpoint: `${hostname}/v${apiVersion}/oidc/userinfo`,
+      authorization_endpoint: `${hostname}/api/v${apiVersion}/oidc/auth`,
+      token_endpoint: `${hostname}/api/v${apiVersion}/oidc/token`,
+      userinfo_endpoint: `${hostname}/api/v${apiVersion}/oidc/userinfo`,
       jwks_uri: `${new URL(hostname).origin}/.well-known/jwks.json`,
     })
 
