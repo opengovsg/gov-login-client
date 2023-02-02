@@ -10,6 +10,14 @@ const GOV_LOGIN_SIGNING_ALG = 'RS256'
 const GOV_LOGIN_SUPPORTED_FLOWS: ResponseType[] = ['code']
 const GOV_LOGIN_AUTH_METHOD: ClientAuthMethod = 'client_secret_post'
 
+type GovLoginClientOptions = {
+  clientId: string
+  clientSecret: string
+  redirectUri?: string
+  hostname: string
+  apiVersion?: number
+}
+
 export class GovLoginClient {
   private client: Client
 
@@ -17,24 +25,17 @@ export class GovLoginClient {
     clientId,
     clientSecret,
     redirectUri,
-    // TODO: update the default hostname to the GovLogin domain
-    hostname = 'https://api.id.gov.sg',
+    // TODO: update the default hostname to the GovLogin domain and make optional
+    hostname,
     apiVersion = 1,
-  }: {
-    clientId: string
-    clientSecret: string
-    privateKey: string
-    redirectUri?: string
-    hostname?: string
-    apiVersion?: number
-  }) {
+  }: GovLoginClientOptions) {
     // TODO: Discover GovLogin issuer metadata via .well-known endpoint
     const { Client } = new Issuer({
       issuer: new URL(hostname).origin,
       authorization_endpoint: `${hostname}/api/v${apiVersion}/oidc/auth`,
       token_endpoint: `${hostname}/api/v${apiVersion}/oidc/token`,
       userinfo_endpoint: `${hostname}/api/v${apiVersion}/oidc/userinfo`,
-      jwks_uri: `${new URL(hostname).origin}/.well-known/jwks.json`,
+      jwks_uri: `${hostname}/api/v${apiVersion}/oidc/jwks`,
     })
 
     this.client = new Client({
@@ -57,7 +58,7 @@ export class GovLoginClient {
    */
   authorizationUrl(
     state: string,
-    scope: string | string[] = 'myinfo.nric_number openid',
+    scope: string | string[] = 'openid',
     nonce: string | null = generators.nonce(),
     redirectUri: string = this.getFirstRedirectUri(),
   ): { url: string; nonce?: string } {
